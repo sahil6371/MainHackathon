@@ -15,18 +15,19 @@ const severityBg   = (s) => s === 'High' ? '#FF3B3018' : s === 'Medium' ? '#FF95
 const issueIcon    = (t) => ({ Pothole: '🕳️', Garbage: '🗑️', 'Broken Streetlight': '💡', Waterlogging: '🌊' }[t] || '⚠️')
 
 export default function App() {
-  const [user, setUser]               = useState(null)
-  const [result, setResult]           = useState(null)
-  const [location, setLocation]       = useState(null)
-  const [loading, setLoading]         = useState(false)
-  const [preview, setPreview]         = useState(null)
-  const [step, setStep]               = useState(1)
-  const [addressInput, setAddressInput] = useState('')
-  const [complaintId, setComplaintId] = useState(null)
-  const [saving, setSaving]           = useState(false)
-  const [showProfile, setShowProfile] = useState(false)
-  const [complaints, setComplaints]   = useState([])
+  const [user, setUser]                           = useState(null)
+  const [result, setResult]                       = useState(null)
+  const [location, setLocation]                   = useState(null)
+  const [loading, setLoading]                     = useState(false)
+  const [preview, setPreview]                     = useState(null)
+  const [step, setStep]                           = useState(1)
+  const [addressInput, setAddressInput]           = useState('')
+  const [complaintId, setComplaintId]             = useState(null)
+  const [saving, setSaving]                       = useState(false)
+  const [showProfile, setShowProfile]             = useState(false)
+  const [complaints, setComplaints]               = useState([])
   const [loadingComplaints, setLoadingComplaints] = useState(false)
+  const [photoError, setPhotoError]               = useState('')
 
   // ── Boot ──────────────────────────────────────────────
   useEffect(() => {
@@ -47,7 +48,7 @@ export default function App() {
 
     const onRestart = () => {
       setStep(1); setResult(null); setPreview(null)
-      setAddressInput(''); setComplaintId(null)
+      setAddressInput(''); setComplaintId(null); setPhotoError('')
     }
     window.addEventListener('restartApp', onRestart)
     return () => window.removeEventListener('restartApp', onRestart)
@@ -71,27 +72,58 @@ export default function App() {
     setShowProfile(true)
   }
 
-  // ── Photo + AI analyse ────────────────────────────────
+  // ── Photo + AI analyse (with validation) ─────────────
   const handlePhoto = async (e) => {
     const file = e.target.files[0]
     if (!file) return
     setPreview(URL.createObjectURL(file))
+    setPhotoError('')
     setLoading(true)
+
     const reader = new FileReader()
     reader.readAsDataURL(file)
     reader.onload = async () => {
-      const base64 = reader.result.split(',')[1]
-      const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-      const res    = await model.generateContent([
-        { inlineData: { mimeType: 'image/jpeg', data: base64 } },
-        `You are a Mumbai civic issue detector. Analyze this image and reply ONLY in JSON:
-        {"issueType":"Pothole/Garbage/Broken Streetlight/Waterlogging/Other","severity":"Low/Medium/High","description":"one line description in English"}`
-      ])
-      const text  = res.response.text()
-      const clean = text.replace(/```json|```/g, '').trim()
-      setResult(JSON.parse(clean))
-      setLoading(false)
-      setStep(2)
+      try {
+        const base64 = reader.result.split(',')[1]
+        const model  = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+        const res    = await model.generateContent([
+          { inlineData: { mimeType: 'image/jpeg', data: base64 } },
+          `You are a strict Mumbai civic issue detector for BMC.
+          Analyze this image carefully.
+
+          ONLY accept these valid civic problems visible in public areas/roads:
+          Pothole, Garbage dumping, Broken Streetlight, Waterlogging.
+
+          If image shows a valid civic issue → reply ONLY with JSON (no extra text):
+          {"issueType":"Pothole/Garbage/Broken Streetlight/Waterlogging/Other","severity":"Low/Medium/High","description":"one line in English","isValid":true}
+
+          If image is NOT a civic issue (selfie, food, animal, indoor photo, nature, random object, person, car, building without damage, etc.) → reply with exactly this single word:
+          NOT_CIVIC_ISSUE
+
+          Be very strict. When in doubt → NOT_CIVIC_ISSUE`
+        ])
+
+        const text  = res.response.text().trim()
+        const clean = text.replace(/```json|```/g, '').trim()
+
+        if (clean === 'NOT_CIVIC_ISSUE' || !clean.startsWith('{')) {
+          setLoading(false)
+          setPreview(null)
+          setPhotoError('Yeh civic issue nahi lagta. Pothole, garbage, broken streetlight ya waterlogging ki clear photo lo.')
+          return
+        }
+
+        const parsed = JSON.parse(clean)
+        setResult(parsed)
+        setLoading(false)
+        setStep(2)
+
+      } catch (err) {
+        console.error(err)
+        setLoading(false)
+        setPreview(null)
+        setPhotoError('Image analyze nahi ho saki. Dobara try karo.')
+      }
     }
   }
 
@@ -130,7 +162,6 @@ export default function App() {
   // ── Guard ─────────────────────────────────────────────
   if (!user) return <Signup onComplete={(u) => setUser(u)} />
 
-  // ── Render ────────────────────────────────────────────
   return (
     <>
       <style>{`
@@ -139,28 +170,23 @@ export default function App() {
         body { background: #0D0D0D; min-height: 100vh; }
         .app { max-width: 430px; margin: 0 auto; min-height: 100vh; background: #0D0D0D; color: #fff; font-family: 'DM Sans', sans-serif; }
 
-        /* Header */
         .hdr { padding: 20px 20px 0; display: flex; align-items: center; justify-content: space-between; }
         .logo { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
         .logo span { color: #FF6B00; }
         .hdr-right { display: flex; align-items: center; gap: 8px; }
 
-        /* Step dots */
         .step-dots { display: flex; align-items: center; gap: 5px; }
         .sd { width: 6px; height: 6px; border-radius: 3px; background: #222; transition: all 0.3s; }
         .sd.active { width: 18px; background: #FF6B00; }
         .sd.done { background: #34C759; }
 
-        /* User chip */
         .user-chip { background: #1A1A1A; border: 1px solid #242424; border-radius: 100px; padding: 5px 12px 5px 6px; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: border-color 0.2s; }
         .user-chip:hover { border-color: #FF6B00; }
         .user-av { width: 26px; height: 26px; background: #FF6B00; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
         .user-nm { font-size: 13px; font-weight: 600; color: #bbb; }
 
-        /* Welcome */
         .welcome { margin: 10px 20px 4px; padding: 9px 14px; background: #FF6B000D; border: 1px solid #FF6B0025; border-radius: 10px; font-size: 13px; color: #FF6B00; }
 
-        /* Location bar */
         .loc-bar { margin: 10px 20px; background: #1A1A1A; border: 1px solid #222; border-radius: 12px; padding: 11px 15px; display: flex; align-items: center; gap: 8px; }
         .loc-dot { width: 8px; height: 8px; border-radius: 50%; background: #34C759; animation: pulse 2s infinite; flex-shrink: 0; }
         .loc-dot.detecting { background: #FF9500; }
@@ -169,7 +195,6 @@ export default function App() {
         .loc-text strong { color: #fff; }
         .ward-pill { background: #FF6B0018; border: 1px solid #FF6B0040; color: #FF6B00; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 7px; white-space: nowrap; }
 
-        /* Upload card */
         .upload-wrap { padding: 10px 20px 24px; }
         .upload-card { background: #141414; border: 2px dashed #252525; border-radius: 24px; padding: 40px 20px; text-align: center; position: relative; overflow: hidden; }
         .upload-card::before { content:''; position:absolute; inset:0; background: radial-gradient(circle at 50% 40%, #FF6B000A 0%, transparent 65%); pointer-events:none; }
@@ -185,11 +210,12 @@ export default function App() {
         @keyframes sp { to { transform: rotate(360deg); } }
         .ai-txt { font-size: 13px; color: #888; }
 
-        /* Result section */
+        .photo-error { margin: 0 20px 12px; background: #FF3B3012; border: 1px solid #FF3B3035; color: #FF3B30; padding: 13px 16px; border-radius: 14px; font-size: 14px; line-height: 1.6; text-align: center; }
+        .photo-error-icon { font-size: 28px; display: block; margin-bottom: 6px; }
+
         .result-wrap { padding: 0 20px 24px; }
         .sec-label { font-size: 11px; color: #555; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; font-weight: 600; }
 
-        /* Issue card */
         .issue-card { background: #141414; border-radius: 20px; overflow: hidden; margin-bottom: 12px; border: 1px solid #1E1E1E; }
         .issue-hdr { padding: 16px 18px; display: flex; align-items: flex-start; gap: 14px; }
         .issue-ico { width: 50px; height: 50px; border-radius: 14px; background: #1E1E1E; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
@@ -205,13 +231,11 @@ export default function App() {
         .loc-ward { font-size: 12px; color: #555; margin-top: 2px; }
         .loc-covers { font-size: 11px; color: #3A3A3A; margin-top: 3px; }
 
-        /* Officer bar */
         .officer-bar { background: #141414; border: 1px solid #1E1E1E; border-radius: 14px; padding: 13px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
         .officer-av { width: 38px; height: 38px; background: #1E1E1E; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
         .officer-name { font-size: 13px; font-weight: 700; }
         .officer-desig { font-size: 11px; color: #555; margin-top: 2px; }
 
-        /* Address input */
         .addr-wrap { margin-bottom: 12px; }
         .addr-box { background: #141414; border: 1.5px solid #252525; border-radius: 16px; padding: 14px 16px; transition: border-color 0.2s; }
         .addr-box:focus-within { border-color: #FF6B00; }
@@ -220,15 +244,12 @@ export default function App() {
         .addr-input::placeholder { color: #333; }
         .addr-hint { font-size: 11px; color: #3A3A3A; margin-top: 8px; line-height: 1.5; }
 
-        /* Map */
         .map-wrap { border-radius: 18px; overflow: hidden; margin-bottom: 12px; }
 
-        /* Action button */
         .action-btn { width: 100%; padding: 15px; border: none; border-radius: 16px; font-size: 16px; font-weight: 700; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; background: #FF6B00; color: #fff; }
         .action-btn:hover:not(:disabled) { background: #E55A00; transform: translateY(-1px); }
         .action-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-        /* Profile modal */
         .profile-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.82); z-index: 999; display: flex; align-items: flex-end; }
         .profile-sheet { background: #0F0F0F; border-radius: 28px 28px 0 0; padding: 24px 20px 44px; width: 100%; max-height: 88vh; overflow-y: auto; }
         .profile-hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
@@ -238,7 +259,6 @@ export default function App() {
         .profile-count { font-size: 12px; color: #FF6B00; margin-top: 4px; font-weight: 600; }
         .profile-close { margin-left: auto; background: #1A1A1A; border: none; color: #666; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
-        /* Complaint cards in profile */
         .c-card { background: #161616; border: 1px solid #1E1E1E; border-radius: 16px; padding: 14px 15px; margin-bottom: 10px; }
         .c-card-hdr { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .c-ico { font-size: 20px; }
@@ -301,7 +321,7 @@ export default function App() {
             <div className="upload-card">
               <span className="upload-icon">📸</span>
               <div className="upload-title">Issue Report Karo</div>
-              <div className="upload-sub">Photo lo — AI classify karega,<br />BMC ko alert jayega</div>
+              <div className="upload-sub">Pothole, garbage, broken light ya<br />waterlogging ki photo lo</div>
               <label className="cam-label">
                 📷 Camera Kholo
                 <input className="cam-input" type="file" accept="image/*" capture="environment" onChange={handlePhoto} />
@@ -316,6 +336,14 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* ✅ Photo validation error */}
+            {photoError && (
+              <div className="photo-error">
+                <span className="photo-error-icon">🚫</span>
+                {photoError}
+              </div>
+            )}
           </div>
         )}
 
@@ -323,7 +351,6 @@ export default function App() {
         {step === 2 && result && location && (
           <div className="result-wrap">
 
-            {/* AI Detection */}
             <div className="sec-label">AI Detection</div>
             <div className="issue-card">
               <div className="issue-hdr">
@@ -347,7 +374,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Ward Officer */}
             <div className="sec-label">Ward Officer</div>
             <div className="officer-bar">
               <div className="officer-av">👮</div>
@@ -357,7 +383,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* ✅ NEW — Exact Address Input */}
             <div className="sec-label">Exact Location (Optional)</div>
             <div className="addr-wrap">
               <div className="addr-box">
@@ -373,13 +398,11 @@ export default function App() {
               </div>
             </div>
 
-            {/* Map */}
             <div className="sec-label">Location on Map</div>
             <div className="map-wrap">
               <MapView location={location} result={result} />
             </div>
 
-            {/* Proceed */}
             <button className="action-btn" onClick={handleProceed} disabled={saving}>
               {saving
                 ? <><div className="spin" style={{ borderColor: '#ffffff30', borderTopColor: '#fff' }} /> Saving...</>
