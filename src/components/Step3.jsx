@@ -46,10 +46,68 @@ export default function Step3({ result, location, preview, user, complaintId }) 
   const [emailSending, setEmailSending] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
   const [emailError, setEmailError] = useState('')
+  // ✅ NEW: editable email body state
+  const [editableEmailBody, setEditableEmailBody] = useState('')
+  const [photoBase64, setPhotoBase64] = useState('')
 
   const trackingUrl = `https://nagrik-ai-eta.vercel.app/complaint/${complaintId}`
 
-  useEffect(() => { if (preview) drawStory() }, [])
+  // ✅ Convert preview blob URL → base64 for email inline image
+  useEffect(() => {
+    if (preview) {
+      fetch(preview)
+        .then(r => r.blob())
+        .then(blob => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            // Full data URL (data:image/jpeg;base64,.....) — EmailJS needs just base64 string
+            const fullDataUrl = reader.result
+            setPhotoBase64(fullDataUrl) // keep full data URL for <img> tag in email
+          }
+          reader.readAsDataURL(blob)
+        })
+        .catch(e => console.error('Photo base64 convert error:', e))
+    }
+    if (preview) drawStory()
+  }, [])
+
+  // Build the default email body (plain text version for editable textarea)
+  const buildDefaultEmailBody = () =>
+`To      : ${location.ward.wardOfficerName}
+Position: ${location.ward.wardOfficerDesignation}
+Email   : ${location.ward.wardOfficeEmail}
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+COMPLAINT DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━
+Complaint ID : ${complaintId}
+Issue Type   : ${result.issueType}
+Severity     : ${result.severity}
+Ward         : ${location.ward.ward} — ${location.ward.name}
+Address      : ${result.addressDetail || 'Not specified'}
+GPS          : ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}
+Date & Time  : ${new Date().toLocaleString('en-IN')}
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+Description  : ${result.description}
+
+Reported By  : ${user.firstName} ${user.lastName}
+Mobile       : ${user.mobile}
+Email        : ${user.email}
+
+Track publicly: ${trackingUrl}
+
+Please acknowledge and take action within 48 hours.
+
+Regards,
+NagrikAI Platform
+nagrik-ai-eta.vercel.app`
+
+  // ✅ Open modal and pre-fill editable body
+  const openEmailModal = () => {
+    setEditableEmailBody(buildDefaultEmailBody())
+    setShowEmailPreview(true)
+  }
 
   const drawStory = () => {
     const canvas = canvasRef.current
@@ -60,41 +118,34 @@ export default function Step3({ result, location, preview, user, complaintId }) 
     const img = new Image()
     img.src = preview
     img.onload = () => {
-      // Background
       ctx.fillStyle = '#0D0D0D'
       ctx.fillRect(0, 0, 1080, 1920)
 
-      // Photo centered
       const imgAspect = img.width / img.height
       const drawW = 1080, drawH = drawW / imgAspect
       ctx.drawImage(img, 0, (1920 - drawH) / 2, drawW, drawH)
 
-      // Top gradient
       const topGrad = ctx.createLinearGradient(0, 0, 0, 500)
       topGrad.addColorStop(0, 'rgba(0,0,0,0.92)')
       topGrad.addColorStop(1, 'rgba(0,0,0,0)')
       ctx.fillStyle = topGrad; ctx.fillRect(0, 0, 1080, 500)
 
-      // Bottom gradient
       const botGrad = ctx.createLinearGradient(0, 1200, 0, 1920)
       botGrad.addColorStop(0, 'rgba(0,0,0,0)')
       botGrad.addColorStop(1, 'rgba(0,0,0,0.97)')
       ctx.fillStyle = botGrad; ctx.fillRect(0, 0, 1080, 1920)
 
-      // Logo
       ctx.fillStyle = '#FF6B00'; ctx.font = 'bold 82px Arial'; ctx.textAlign = 'left'
       ctx.fillText('Nagrik', 60, 110)
       ctx.fillStyle = '#ffffff'; ctx.fillText('AI', 348, 110)
       ctx.fillStyle = '#ffffff66'; ctx.font = '30px Arial'
       ctx.fillText('Mumbai Civic Report • ' + new Date().toLocaleDateString('en-IN'), 60, 155)
 
-      // Complaint ID badge
       ctx.fillStyle = '#ffffff15'; ctx.beginPath()
       ctx.roundRect(60, 172, 520, 52, 10); ctx.fill()
       ctx.fillStyle = '#FF6B00'; ctx.font = 'bold 26px Arial'
       ctx.fillText(`🔖 ID: ${complaintId}`, 75, 206)
 
-      // Issue + severity badges
       const badgeColor = result.severity === 'High' ? '#FF3B30' : result.severity === 'Medium' ? '#FF9500' : '#34C759'
       ctx.fillStyle = badgeColor; ctx.beginPath()
       ctx.roundRect(60, 242, 520, 88, 44); ctx.fill()
@@ -105,7 +156,6 @@ export default function Step3({ result, location, preview, user, complaintId }) 
       ctx.fillStyle = badgeColor; ctx.font = 'bold 40px Arial'
       ctx.fillText(`${result.severity} ⚡`, 730, 298)
 
-      // Location block
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 52px Arial'; ctx.textAlign = 'left'
       ctx.fillText(`📍 ${location.ward.name}`, 60, 1500)
       ctx.fillStyle = '#ffcc00'; ctx.font = '38px Arial'
@@ -115,11 +165,9 @@ export default function Step3({ result, location, preview, user, complaintId }) 
         ctx.fillText(result.addressDetail.substring(0, 46), 60, 1602)
       }
 
-      // Roast caption
       ctx.fillStyle = '#ffffff'; ctx.font = '40px Arial'; ctx.textAlign = 'center'
       wrapText(ctx, roast, 540, 1660, 960, 56)
 
-      // Bottom bar
       ctx.fillStyle = '#FF6B00'; ctx.fillRect(0, 1860, 1080, 60)
       ctx.fillStyle = '#fff'; ctx.font = 'bold 26px Arial'; ctx.textAlign = 'center'
       ctx.fillText(`nagrik-ai-eta.vercel.app/complaint/${complaintId}`, 540, 1898)
@@ -153,19 +201,31 @@ export default function Step3({ result, location, preview, user, complaintId }) 
     setCopied(true); setTimeout(() => setCopied(false), 2500)
   }
 
+  // ✅ UPDATED: X share — auto download story first, then open tweet
   const shareOnX = () => {
-    const text = encodeURIComponent(
-      `🚨 Civic Issue Reported — ${location.ward.name}, Mumbai!\n` +
-      `Issue: ${result.issueType} | Severity: ${result.severity}\n` +
-      (result.addressDetail ? `📍 ${result.addressDetail}\n` : '') +
-      `\n${roast}\n\n` +
-      `Track complaint 👉 ${trackingUrl}\n\n` +
-      `@mybmc #FixMumbai #${location.ward.name.replace(/ /g, '')} #NagrikAI`
-    )
-    window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank')
+    // Step 1: Auto-download the story image if ready
+    if (storyReady && storyDataUrl) {
+      const a = document.createElement('a')
+      a.href = storyDataUrl
+      a.download = `NagrikAI-${complaintId}.jpg`
+      a.click()
+    }
+
+    // Step 2: Open tweet compose window after brief delay
+    setTimeout(() => {
+      const text = encodeURIComponent(
+        `🚨 Civic Issue Reported — ${location.ward.name}, Mumbai!\n` +
+        `Issue: ${result.issueType} | Severity: ${result.severity}\n` +
+        (result.addressDetail ? `📍 ${result.addressDetail}\n` : '') +
+        `\n${roast}\n\n` +
+        `Track complaint 👉 ${trackingUrl}\n\n` +
+        `@mybmc #FixMumbai #${location.ward.name.replace(/ /g, '')} #NagrikAI`
+      )
+      window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank')
+    }, 600)
   }
 
-  // ✅ EmailJS — direct send, no mail app opens
+  // ✅ UPDATED: EmailJS send with inline photo base64 + editable body
   const sendEmail = async () => {
     setEmailSending(true)
     setEmailError('')
@@ -189,6 +249,9 @@ export default function Step3({ result, location, preview, user, complaintId }) 
           user_mobile: user.mobile,
           user_email: user.email,
           tracking_url: trackingUrl,
+          // ✅ NEW: editable body + inline photo
+          email_body: editableEmailBody,
+          photo_base64: photoBase64, // full data URL → use as <img src="{{photo_base64}}"> in EmailJS template
         },
         import.meta.env.VITE_EMAILJS_PUBLIC_KEY
       )
@@ -200,37 +263,6 @@ export default function Step3({ result, location, preview, user, complaintId }) 
     }
     setEmailSending(false)
   }
-
-  const emailPreviewText =
-`To      : ${location.ward.wardOfficerName}
-Position: ${location.ward.wardOfficerDesignation}
-Email   : ${location.ward.wardOfficeEmail}
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-COMPLAINT DETAILS
-━━━━━━━━━━━━━━━━━━━━━━━━
-Complaint ID : ${complaintId}
-Issue Type   : ${result.issueType}
-Severity     : ${result.severity}
-Ward         : ${location.ward.ward} — ${location.ward.name}
-Address      : ${result.addressDetail || 'Not specified'}
-GPS          : ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}
-Date & Time  : ${new Date().toLocaleString('en-IN')}
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-Description  : ${result.description}
-
-Reported By  : ${user.firstName} ${user.lastName}
-Mobile       : ${user.mobile}
-Email        : ${user.email}
-
-Track publicly: ${trackingUrl}
-
-Please acknowledge and take action within 48 hours.
-
-Regards,
-NagrikAI Platform
-nagrik-ai-eta.vercel.app`
 
   return (
     <>
@@ -274,16 +306,29 @@ nagrik-ai-eta.vercel.app`
         .s3-btn-ghost:hover { color: #888; border-color: #333; }
         .s3-btn-success { background: #0D2E1A; color: #34C759; border: 1px solid #34C75930; }
 
+        .s3-x-hint { font-size: 11px; color: #3A3A3A; text-align: center; margin-top: -6px; margin-bottom: 10px; line-height: 1.5; }
+
         .s3-error-msg { background: #FF3B3012; border: 1px solid #FF3B3035; color: #FF3B30; padding: 11px 15px; border-radius: 12px; font-size: 13px; margin-bottom: 10px; }
 
         /* Email modal */
-        .s3-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 999; display: flex; align-items: flex-end; }
-        .s3-modal-sheet { background: #111; border-radius: 26px 26px 0 0; padding: 24px 20px 36px; width: 100%; max-height: 82vh; overflow-y: auto; }
+        .s3-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 999; display: flex; align-items: flex-end; }
+        .s3-modal-sheet { background: #111; border-radius: 26px 26px 0 0; padding: 24px 20px 36px; width: 100%; max-height: 90vh; overflow-y: auto; }
         .s3-modal-title { font-family: 'Syne', sans-serif; font-size: 19px; font-weight: 800; margin-bottom: 4px; }
         .s3-modal-sub { font-size: 13px; color: #555; margin-bottom: 16px; line-height: 1.7; }
         .s3-modal-to { color: #FF6B00; font-weight: 600; }
         .s3-modal-note { font-size: 11px; color: #3A3A3A; }
-        .s3-email-preview { background: #161616; border: 1px solid #222; border-radius: 12px; padding: 14px 16px; font-size: 11.5px; color: #888; line-height: 1.9; white-space: pre-wrap; font-family: 'Courier New', monospace; margin-bottom: 16px; max-height: 260px; overflow-y: auto; }
+
+        /* ✅ Photo preview inside modal */
+        .s3-modal-photo { width: 100%; border-radius: 12px; margin-bottom: 14px; display: block; max-height: 220px; object-fit: cover; border: 1px solid #252525; }
+
+        /* ✅ Editable email textarea */
+        .s3-email-edit-label { font-size: 10px; color: #FF6B00; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+        .s3-edit-badge { background: #FF6B0018; border: 1px solid #FF6B0030; color: #FF6B00; font-size: 10px; padding: 2px 8px; border-radius: 6px; letter-spacing: 0.5px; }
+        .s3-email-textarea { width: 100%; background: #161616; border: 1.5px solid #252525; border-radius: 12px; padding: 14px 16px; font-size: 11.5px; color: #bbb; line-height: 1.9; white-space: pre-wrap; font-family: 'Courier New', monospace; margin-bottom: 12px; min-height: 260px; resize: vertical; outline: none; transition: border-color 0.2s; }
+        .s3-email-textarea:focus { border-color: #FF6B00; }
+
+        .s3-photo-note { font-size: 11px; color: #3A3A3A; margin-bottom: 14px; padding: 9px 12px; background: #161616; border-radius: 10px; border: 1px solid #1E1E1E; line-height: 1.6; }
+
         .s3-modal-actions { display: flex; gap: 10px; }
         .s3-modal-actions .s3-btn { flex: 1; margin-bottom: 0; }
 
@@ -346,16 +391,20 @@ nagrik-ai-eta.vercel.app`
           </button>
         )}
 
+        {/* ✅ UPDATED X button — auto downloads story then opens tweet */}
         <button className="s3-btn s3-btn-x" onClick={shareOnX}>
-          𝕏 &nbsp;X pe Post Karo
+          𝕏 &nbsp;X pe Share Karo
         </button>
+        <div className="s3-x-hint">
+          📥 Story automatically download hogi → phir tweet window khulega → image attach karo aur post karo
+        </div>
 
         {emailSent ? (
           <button className="s3-btn s3-btn-success" disabled>
             ✅ Email Bhej Diya — {location.ward.wardOfficerName} ko
           </button>
         ) : (
-          <button className="s3-btn s3-btn-dark" onClick={() => setShowEmailPreview(true)}>
+          <button className="s3-btn s3-btn-dark" onClick={openEmailModal}>
             📧 Ward Officer ko Email Bhejo
           </button>
         )}
@@ -371,25 +420,56 @@ nagrik-ai-eta.vercel.app`
         </button>
       </div>
 
-      {/* ── Email Preview Modal ── */}
+      {/* ✅ UPDATED Email Modal — photo preview + editable body */}
       {showEmailPreview && (
         <div className="s3-modal-overlay" onClick={() => !emailSending && setShowEmailPreview(false)}>
           <div className="s3-modal-sheet" onClick={e => e.stopPropagation()}>
+
             <div className="s3-modal-title">📧 Email Preview</div>
             <div className="s3-modal-sub">
               Jayegi → <span className="s3-modal-to">{location.ward.wardOfficeEmail}</span>
               <br />
               <span className="s3-modal-note">✅ Koi mail app nahi khulegaa — directly background mein send hogi</span>
             </div>
-            <div className="s3-email-preview">{emailPreviewText}</div>
+
+            {/* ✅ Photo preview in modal */}
+            {preview && (
+              <>
+                <div style={{ fontSize: 10, color: '#555', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 700, marginBottom: 8 }}>
+                  📷 Attached Photo
+                </div>
+                <img src={preview} className="s3-modal-photo" alt="Issue Photo" />
+              </>
+            )}
+
+            {/* ✅ Editable email body */}
+            <div className="s3-email-edit-label">
+              ✏️ Email Body
+              <span className="s3-edit-badge">EDITABLE</span>
+            </div>
+            <textarea
+              className="s3-email-textarea"
+              value={editableEmailBody}
+              onChange={e => setEditableEmailBody(e.target.value)}
+              disabled={emailSending}
+              spellCheck={false}
+            />
+
+            <div className="s3-photo-note">
+              📎 Photo automatically email mein inline attach hogi — officer directly dekh sakta hai.
+            </div>
+
             <div className="s3-modal-actions">
               <button className="s3-btn s3-btn-ghost" onClick={() => setShowEmailPreview(false)} disabled={emailSending}>
                 Cancel
               </button>
               <button className="s3-btn s3-btn-orange" onClick={sendEmail} disabled={emailSending}>
-                {emailSending ? <><div className="s3-spinner-sm" /> Bhej raha hai...</> : '🚀 Bhejo Email'}
+                {emailSending
+                  ? <><div className="s3-spinner-sm" /> Bhej raha hai...</>
+                  : '🚀 Bhejo Email'}
               </button>
             </div>
+
           </div>
         </div>
       )}
