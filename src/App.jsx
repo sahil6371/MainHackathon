@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { collection, addDoc, query, where, getDocs } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db } from './firebase'
 import MapView from './components/MapView'
 import Step3 from './components/Step3'
 import Signup from './components/Signup'
