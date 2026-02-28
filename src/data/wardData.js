@@ -40,7 +40,7 @@ export const mumbaiWards = [
   {
     ward: 'F/North', name: 'Matunga', lat: 19.0281, lng: 72.8584,
     areas: ['Matunga', 'Sion', 'Dharavi', 'Antop Hill'],
-    wardOfficeEmail: 'ao.fn@mcgm.gov.in',
+    wardOfficeEmail: 'sahilkade2@gmail.com',
     wardOfficerName: 'Smt. Kavita Jadhav',
     wardOfficerDesignation: 'Assistant Commissioner, F/North Ward'
   },
