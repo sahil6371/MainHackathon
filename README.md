@@ -1,16 +1,93 @@
-# React + Vite
+# NagrikAI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+NagrikAI is a React + Vite web app for reporting civic issues in Mumbai.
+Users can upload an issue photo, get AI-based issue classification, submit the complaint to Firestore, and share or track complaints publicly.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- AI-assisted issue detection from photo (Gemini)
+- Ward detection from GPS location
+- Complaint registration in Firebase Firestore
+- Public complaint tracking page (`/complaint/:id`)
+- Social sharing and officer email flow (EmailJS)
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React 19
+- Vite 7
+- Firebase (Firestore)
+- Google Generative AI (`@google/generative-ai`)
+- EmailJS (`@emailjs/browser`)
+- Leaflet + React Leaflet
+- React Router
 
-## Expanding the ESLint configuration
+## Project Structure
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```
+src/
+	components/
+		MapView.jsx
+		Signup.jsx
+		Step3.jsx
+	data/
+		wardData.js
+	pages/
+		ComplaintPage.jsx
+	App.jsx
+	firebase.js
+	main.jsx
+```
+
+## Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create a `.env` file in the project root with:
+
+```env
+VITE_GEMINI_API_KEY=your_gemini_api_key
+VITE_EMAILJS_SERVICE_ID=your_emailjs_service_id
+VITE_EMAILJS_TEMPLATE_ID=your_emailjs_template_id
+VITE_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
+```
+
+3. Start development server:
+
+```bash
+npm run dev
+```
+
+## Available Scripts
+
+- `npm run dev` — start local development server
+- `npm run build` — create production build
+- `npm run preview` — preview production build locally
+- `npm run lint` — run ESLint
+
+## Routing
+
+- `/` — main complaint reporting flow
+- `/complaint/:id` — public complaint tracking page
+
+## Deployment
+
+This project is configured for Vercel (`vercel.json` included).
+
+### Build command
+
+```bash
+npm run build
+```
+
+### Output directory
+
+`dist`
+
+## Notes
+
+- Firebase configuration is currently in `src/firebase.js`.
+- Make sure your Gemini and EmailJS credentials are valid before testing the full flow.
